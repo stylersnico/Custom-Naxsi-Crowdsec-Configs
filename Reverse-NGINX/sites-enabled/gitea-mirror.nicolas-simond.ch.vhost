@@ -1,0 +1,58 @@
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name gitea-mirror.nicolas-simond.ch;
+
+    # SSL configuration...
+        ssl_certificate /etc/letsencrypt/live/nicolas-simond.ch/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/nicolas-simond.ch/privkey.pem;
+
+        error_log /var/log/nginx/gitea-mirror.nicolas-simond.ch/error.log;
+        NaxsiLogFile /var/log/nginx/gitea-mirror.nicolas-simond.ch/naxsi_error.log;
+        access_log /var/log/nginx/gitea-mirror.nicolas-simond.ch/access.log combined;
+        limit_conn conn_gitea_mirror 500;
+
+        include /usr/local/etc/nginx/naxsi/naxsi_denied.conf;
+
+        # Naxsi only runs on the login/auth path below (the one real
+        # unauthenticated attack surface); everything else requires a
+        # session already and is bypassed preemptively to avoid the
+        # kind of repeated whack-a-mole false positives seen on CheckMK.
+        # Path confirmed via naxsi_error.log ("Better Auth" library
+        # convention: /login, /api/auth/get-session, /api/auth/list-
+        # accounts, ...). No limit_req zone=login here: the frontend
+        # polls get-session/list-accounts on every page load/navigation
+        # (not credential submission), which tripped the brute-force
+        # rate limit on normal usage - naxsi still scans this path.
+        location ~ ^/(login|api/auth/) {
+            SecRulesEnabled;
+            CheckRule "$SQL >= 8" BLOCK;
+            CheckRule "$RFI >= 8" BLOCK;
+            CheckRule "$TRAVERSAL >= 4" BLOCK;
+            CheckRule "$EVADE >= 4" BLOCK;
+            CheckRule "$UPLOAD >= 8" BLOCK;
+            CheckRule "$XSS >= 8" BLOCK;
+            include /usr/local/etc/nginx/naxsi/gitea_mirror_whitelist.rules;
+
+            client_max_body_size 512M;
+            proxy_pass http://192.168.1.10:4321;
+            proxy_set_header Connection $http_connection;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+            location / {
+        client_max_body_size 512M;
+
+        proxy_pass http://192.168.1.10:4321;
+        proxy_set_header Connection $http_connection;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

@@ -1,0 +1,110 @@
+server {
+    listen 443 ssl;
+        http2 on;
+    server_name umami.nicolas-simond.ch;
+
+    # SSL configuration
+    ssl_certificate /etc/letsencrypt/live/nicolas-simond.ch/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/nicolas-simond.ch/privkey.pem;
+
+    # Logging
+    error_log /var/log/nginx/umami.nicolas-simond.ch/error.log;
+    NaxsiLogFile /var/log/nginx/umami.nicolas-simond.ch/naxsi_error.log;
+    access_log /var/log/nginx/umami.nicolas-simond.ch/access.log combined;
+    limit_conn conn_umami 500;
+
+    include /usr/local/etc/nginx/naxsi/naxsi_denied.conf;
+
+    # Umami is meant to be called cross-origin from any tracked site's
+    # own domain, so this write-only, credential-less beacon endpoint
+    # allows any origin. The browser's OPTIONS preflight is answered
+    # directly here (204, no naxsi/proxy needed) rather than relying on
+    # the backend to handle it - it was returning 405 for OPTIONS.
+    location = /api/send {
+        # Strip any CORS headers the backend sends on its own first -
+        # if both nginx and Umami set Access-Control-Allow-Origin, the
+        # response ends up with two (possibly conflicting) values,
+        # which browsers reject as invalid regardless of our own value.
+        proxy_hide_header Access-Control-Allow-Origin;
+        proxy_hide_header Access-Control-Allow-Methods;
+        proxy_hide_header Access-Control-Allow-Headers;
+        proxy_hide_header Access-Control-Allow-Credentials;
+
+        add_header Access-Control-Allow-Origin "*" always;
+
+        if ($request_method = OPTIONS) {
+            add_header Access-Control-Allow-Origin "*" always;
+            add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+            # Reflect whatever headers the browser actually asked for
+            # (Umami sends custom "x-umami-*" headers that vary by
+            # version) instead of hardcoding a list that goes stale.
+            add_header Access-Control-Allow-Headers $http_access_control_request_headers always;
+            add_header Access-Control-Max-Age 86400 always;
+            return 204;
+        }
+
+        SecRulesEnabled;
+        CheckRule "$SQL >= 8" BLOCK;
+        CheckRule "$RFI >= 8" BLOCK;
+        CheckRule "$TRAVERSAL >= 4" BLOCK;
+        CheckRule "$EVADE >= 4" BLOCK;
+        CheckRule "$UPLOAD >= 8" BLOCK;
+        CheckRule "$XSS >= 8" BLOCK;
+        include /usr/local/etc/nginx/naxsi/umami_whitelist.rules;
+
+        proxy_pass http://192.168.1.10:3421;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+        proxy_buffering off;
+    }
+
+    # Proxy settings
+    location / {
+        # Naxsi WAF - core rules, standard thresholds. No community
+        # whitelist exists for Umami. Risk area: /api/send is a public,
+        # unauthenticated tracking endpoint that forwards the tracked
+        # page's own URL/referrer/query-string as submitted by visitors'
+        # browsers - real-world URLs with odd UTM params or encoded
+        # characters could trip false positives more than on an
+        # authenticated app. Watch naxsi_error.log there specifically.
+        SecRulesEnabled;
+        CheckRule "$SQL >= 8" BLOCK;
+        CheckRule "$RFI >= 8" BLOCK;
+        CheckRule "$TRAVERSAL >= 4" BLOCK;
+        CheckRule "$EVADE >= 4" BLOCK;
+        CheckRule "$UPLOAD >= 8" BLOCK;
+        CheckRule "$XSS >= 8" BLOCK;
+        include /usr/local/etc/nginx/naxsi/umami_whitelist.rules;
+
+        proxy_pass http://192.168.1.10:3421;
+        proxy_http_version 1.1;
+
+        # Headers
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+
+        # WebSocket support
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # Timeouts
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+
+        # Buffering
+        proxy_buffering off;
+    }
+}

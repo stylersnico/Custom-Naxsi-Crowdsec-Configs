@@ -1,0 +1,44 @@
+# Passbolt naxsi whitelist - hand-written, NOT a community-maintained
+# ruleset (none exists for Passbolt, unlike wordpress_whitelist.rules).
+# Scoped narrowly to fix confirmed false positives from real traffic in
+# naxsi_error.log; only extend when a new false positive is confirmed
+# there, not speculatively.
+
+# Passbolt's API (CakePHP) uses bracket notation for nested/dynamic
+# query param names: contain[role], filter[has-users],
+# contain[Permission][User], etc. Keys are arbitrary and can't be
+# enumerated like WordPress's fixed param names, so each "[" or "]" in
+# a param NAME was scoring $XSS 4+4=8 (rules 1310/1311) and blocking
+# almost every API call. Whitelisted in the NAME zone only - actual
+# submitted values are still fully scanned.
+BasicRule wl:1310,1311 "mz:ARGS|NAME";
+
+# Same bracket notation also shows up in BODY param names, e.g.
+# data[gpg_auth][keyid] on /auth/verify.json.
+BasicRule wl:1310,1311 "mz:BODY|NAME";
+
+# Some API calls (e.g. POST /auth/logout.json, /auth/verify.json) send
+# an empty, non-JSON, or non-standard-format body while still setting
+# Content-Type: application/json. naxsi's body parser then fails with
+# one of its internal parser-status codes - "invalid POST format"
+# (id 13), "invalid JSON" (id 15), "empty POST" (id 16) - and blocks
+# unconditionally. These aren't attack-pattern scores, so whitelist
+# them for BODY the same way wordpress.rules does for wp-cron.php's
+# similarly empty/non-standard POST body.
+BasicRule wl:13,15,16 "mz:BODY";
+
+# GPG challenge-response fields (login.json, verify.json) carry opaque
+# encrypted/armored PGP data that can contain almost any byte sequence
+# (pipes, quotes, dashes...) and is never meaningfully scannable for
+# SQLi/XSS. Same "wl:0 = whitelist everything for this zone" pattern
+# wordpress.rules uses for its free-form "content" field.
+#
+# Using exact $BODY_VAR:name matches, not a $BODY_VAR_X regex prefix:
+# the regex-prefix variant (as seen in the community wordpress-minimal
+# ruleset, itself marked BETA by its author) did NOT whitelist
+# data[gpg_auth][user_token_result] in testing despite matching
+# "^data\[gpg_auth\]" - only exact-name whitelisting is confirmed
+# reliable (same mechanism wordpress.rules' "content" rule uses).
+# Add more exact field names here as new ones show up in the log.
+BasicRule wl:0 "mz:$BODY_VAR:data[gpg_auth][keyid]";
+BasicRule wl:0 "mz:$BODY_VAR:data[gpg_auth][user_token_result]";

@@ -1,0 +1,82 @@
+map $http_user_agent $block_bot {
+    default 0;
+    ~*(bot|crawler|spider|scrapy|curl|wget|python|httpclient) 1;
+}
+
+server {
+    listen 443 ssl;
+        http2 on;
+    server_name grafana.nicolas-simond.ch;
+
+    # SSL configuration...
+        ssl_certificate /etc/letsencrypt/live/nicolas-simond.ch/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/nicolas-simond.ch/privkey.pem;
+
+    error_log /var/log/nginx/grafana.nicolas-simond.ch/error.log;
+    NaxsiLogFile /var/log/nginx/grafana.nicolas-simond.ch/naxsi_error.log;
+    access_log /var/log/nginx/grafana.nicolas-simond.ch/access.log combined;
+    limit_conn conn_grafana 500;
+
+    if ($block_bot) {
+        return 403;
+    }
+
+    include /usr/local/etc/nginx/naxsi/naxsi_denied.conf;
+
+    location = /login {
+        limit_req zone=login burst=20 nodelay;
+
+        # Naxsi WAF - core rules, standard thresholds.
+        SecRulesEnabled;
+        CheckRule "$SQL >= 8" BLOCK;
+        CheckRule "$RFI >= 8" BLOCK;
+        CheckRule "$TRAVERSAL >= 4" BLOCK;
+        CheckRule "$EVADE >= 4" BLOCK;
+        CheckRule "$UPLOAD >= 8" BLOCK;
+        CheckRule "$XSS >= 8" BLOCK;
+        include /usr/local/etc/nginx/naxsi/grafana_whitelist.rules;
+
+        client_max_body_size 512M;
+        proxy_pass http://192.168.1.250:3000;
+        proxy_set_header Connection $http_connection;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Embeddable in a Home Assistant dashboard (cross-origin iframe).
+        # The malformed "X-Frame-Options SAMEORIGIN always" (missing the
+        # ":" - the whole string became an invalid header value browsers
+        # ignore) is removed, letting the global, correctly-formed
+        # "X-Frame-Options: SAMEORIGIN" apply. Modern browsers prefer
+        # CSP frame-ancestors over X-Frame-Options when both are
+        # present, so this add_header (kept separate from the global
+        # more_set_headers CSP - multiple CSP headers intersect rather
+        # than replace each other) explicitly allows framing from
+        # ha-home.nicolas-simond.ch without opening it up to anyone else.
+        add_header Content-Security-Policy "frame-ancestors 'self' https://ha-home.nicolas-simond.ch;" always;
+    }
+
+        location / {
+        client_max_body_size 512M;
+
+        # Naxsi only runs on /login above (the one real unauthenticated
+        # attack surface). Everything else requires a valid session and
+        # Grafana's dashboard JSON / PromQL / alert expressions are
+        # exactly the kind of punctuation-heavy structured data that
+        # caused repeated whack-a-mole false positives on CheckMK -
+        # bypassed here preemptively instead.
+
+        proxy_pass http://192.168.1.250:3000;
+        proxy_set_header Connection $http_connection;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # See the same fix's comment on /login above.
+        add_header Content-Security-Policy "frame-ancestors 'self' https://ha-home.nicolas-simond.ch;" always;
+    }
+}

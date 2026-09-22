@@ -1,0 +1,61 @@
+server {
+    listen 443 ssl;
+        http2 on;
+    server_name checkmk.nicolas-simond.ch;
+
+    ssl_certificate /etc/letsencrypt/live/nicolas-simond.ch/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/nicolas-simond.ch/privkey.pem;
+
+    error_log /var/log/nginx/checkmk.nicolas-simond.ch/error.log;
+    NaxsiLogFile /var/log/nginx/checkmk.nicolas-simond.ch/naxsi_error.log;
+    access_log /var/log/nginx/checkmk.nicolas-simond.ch/access.log combined;
+    limit_conn conn_checkmk 500;
+
+    include /usr/local/etc/nginx/naxsi/naxsi_denied.conf;
+
+    # CheckMK's authenticated app surface (wato.py, view.py, ajax_*.py,
+    # widget_*.py, sidebar_snapin.py, the dashboard API, ...) passes
+    # Python-repr-like serialized state through nearly every field -
+    # already needed field-by-field whitelisting on 4 different
+    # endpoints before this became clearly not worth chasing further.
+    # Flipped the model: naxsi is ON only for the pre-auth login flow
+    # below (the one real unauthenticated attack surface); everything
+    # else requires a valid session already, so naxsi is bypassed
+    # entirely rather than continuing to whitelist field-by-field.
+    location ~ ^/cmk/check_mk/(login\.py|user_login_two_factor\.py)$ {
+        limit_req zone=login burst=20 nodelay;
+
+        SecRulesEnabled;
+        CheckRule "$SQL >= 8" BLOCK;
+        CheckRule "$RFI >= 8" BLOCK;
+        CheckRule "$TRAVERSAL >= 4" BLOCK;
+        CheckRule "$EVADE >= 4" BLOCK;
+        CheckRule "$UPLOAD >= 8" BLOCK;
+        CheckRule "$XSS >= 8" BLOCK;
+        include /usr/local/etc/nginx/naxsi/checkmk_whitelist.rules;
+
+        proxy_pass http://192.168.1.15:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_connect_timeout 60s;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
+    location / {
+        proxy_pass http://192.168.1.15:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_connect_timeout 60s;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+}

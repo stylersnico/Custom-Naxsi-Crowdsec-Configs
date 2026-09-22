@@ -1,0 +1,16 @@
+# gitea-mirror naxsi whitelist - hand-written, NOT a community-maintained
+# ruleset (none exists for gitea-mirror). Scoped narrowly to fix
+# confirmed false positives from real traffic in naxsi_error.log; only
+# extend when a new false positive is confirmed there, not speculatively.
+
+# Preventive (not log-confirmed): a WAF should never content-scan a
+# password field - assuming a standard "password" field name for this
+# app's own login, same reasoning as the other password-field fixes.
+# Confirm/adjust the field name if a login block still shows up in
+# naxsi_error.log after this.
+BasicRule wl:0 "mz:$BODY_VAR:password";
+
+# Preventive: session cookies with heavily percent-encoded tokens trip
+# the "double encoding" rule (1315) in the Cookie header - confirmed
+# happening on Nextcloud and CheckMK. Same fix, applied ahead of time.
+BasicRule wl:1000,1001,1005,1007,1010,1011,1013,1100,1101,1200,1308,1309,1310,1311,1315 "mz:$HEADERS_VAR:cookie";

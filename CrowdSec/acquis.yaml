@@ -1,0 +1,16 @@
+# Install at /usr/local/etc/crowdsec/acquis.yaml (FreeBSD pkg layout).
+#
+# Feeds CrowdSec's detection engine from the per-vhost access logs
+# added in Reverse-NGINX/sites-enabled/*.vhost. These logs are kept
+# 1h and self-clean (see ../Reverse-NGINX/newsyslog.conf.d/nginx-access.conf) -
+# CrowdSec is their only real consumer.
+#
+# naxsi_error.log is intentionally NOT included here: its NAXSI_FMT
+# format isn't understood by the crowdsecurity/nginx parser (same gap
+# already documented for the Wazuh integration in the sibling
+# Naxsi-Wazuh-Integration repo) - would need a custom parser to feed
+# CrowdSec scenarios from Naxsi's own blocks, not just raw traffic.
+filenames:
+  - /var/log/nginx/*/access.log
+labels:
+  type: nginx

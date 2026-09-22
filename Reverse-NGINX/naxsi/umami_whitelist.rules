@@ -1,0 +1,30 @@
+# Umami naxsi whitelist - hand-written, NOT a community-maintained
+# ruleset (none exists for Umami). Scoped narrowly to fix confirmed
+# false positives from real traffic in naxsi_error.log; only extend
+# when a new false positive is confirmed there, not speculatively.
+
+# /api/send is the public, unauthenticated tracking endpoint - its
+# "title" field is the tracked page's own <title> content, submitted
+# verbatim by any visitor's browser on any tracked site. Titles
+# routinely contain a "|" separator (e.g. "My Blog | Home"), tripping
+# the SQL keyword-character rule (1005). This is arbitrary free-form
+# text, not something to enumerate - same "wl:0" pattern wordpress.rules
+# uses for its own free-form "content" field.
+BasicRule wl:0 "mz:$BODY_VAR:title";
+
+# Same endpoint's "url" field is the tracked page's own full URL
+# (e.g. "https://example.com/path") - the "https://"/"http://" scheme
+# trips the RFI rules (1100/1101), same false positive wordpress.rules
+# already whitelists for WordPress's own "url"/"referredby" fields.
+BasicRule wl:1100,1101 "mz:$BODY_VAR:url";
+
+# Preventive (not log-confirmed): a WAF should never content-scan a
+# password field - Umami's admin login (separate from /api/send) uses
+# a JSON "password" field. Same reasoning as the CheckMK/WordPress/
+# Nextcloud password-field fixes.
+BasicRule wl:0 "mz:$BODY_VAR:password";
+
+# Preventive: session cookies with heavily percent-encoded tokens trip
+# the "double encoding" rule (1315) in the Cookie header - confirmed
+# happening on Nextcloud and CheckMK. Same fix, applied ahead of time.
+BasicRule wl:1000,1001,1005,1007,1010,1011,1013,1100,1101,1200,1308,1309,1310,1311,1315 "mz:$HEADERS_VAR:cookie";

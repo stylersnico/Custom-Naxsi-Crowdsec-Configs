@@ -1,0 +1,32 @@
+# Gitea naxsi whitelist - hand-written, NOT a community-maintained
+# ruleset (none exists for Gitea). Scoped narrowly to fix confirmed
+# false positives from real traffic in naxsi_error.log; only extend
+# when a new false positive is confirmed there, not speculatively.
+
+# Preventive (not log-confirmed): a WAF should never content-scan a
+# password field - Gitea's login form field is "password". Same
+# reasoning as the CheckMK/WordPress/Nextcloud/Umami/Grafana
+# password-field fixes.
+BasicRule wl:0 "mz:$BODY_VAR:password";
+
+# Preventive: session cookies with heavily percent-encoded tokens trip
+# the "double encoding" rule (1315) in the Cookie header - confirmed
+# happening on Nextcloud and CheckMK. Same fix, applied ahead of time.
+BasicRule wl:1000,1001,1005,1007,1010,1011,1013,1100,1101,1200,1308,1309,1310,1311,1315 "mz:$HEADERS_VAR:cookie";
+
+# Git's standard "compare two refs" URL syntax (/{user}/{repo}/compare/
+# v1.2.3...v4.5.6) contains a literal ".." from the "..." separator,
+# tripping the directory-traversal rule (1200) on every single compare/
+# diff view - core Gitea functionality, not an actual traversal attempt.
+BasicRule wl:1200 "mz:$URL_X:/compare/|URL";
+
+# /user/login's "redirect_to" param carries the page to return to after
+# login (a URL-encoded path) - trips the "=" rule (1009), "double
+# encoding" (1315), and occasionally the SQL-keyword substring rule
+# (1000, e.g. a repo/path name containing "select"). Legitimate Gitea
+# behavior, not attacker-controlled beyond an ordinary internal path.
+BasicRule wl:1000,1009,1315 "mz:$ARGS_VAR:redirect_to";
+
+# Issue list's "assignee" filter can be a bracketed/parenthesized value
+# depending on how it's rendered, tripping the paren rules (1010/1011).
+BasicRule wl:1010,1011 "mz:$ARGS_VAR:assignee";

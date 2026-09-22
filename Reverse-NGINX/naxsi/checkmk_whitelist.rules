@@ -1,0 +1,25 @@
+# CheckMK naxsi whitelist - hand-written, NOT a community-maintained
+# ruleset (none exists for CheckMK). Scoped narrowly to fix confirmed
+# false positives from real traffic in naxsi_error.log; only extend
+# when a new false positive is confirmed there, not speculatively.
+#
+# Naxsi only runs on the pre-auth login/2FA flow (login.py,
+# user_login_two_factor.py) - see checkmk.nicolas-simond.ch.vhost.
+# Everything past login is bypassed entirely, so these are the only
+# fixes still relevant.
+
+# Login password field: a password containing a single quote (or any
+# other special character) blocked login entirely (rule 1013). WAF
+# character scanning on a password field is not meaningful protection
+# - the backend handles it via hashing/prepared statements regardless
+# of content - and only creates login lockouts for users with strong/
+# varied passwords. Whitelisted entirely, same "wl:0" pattern used for
+# other inherently-arbitrary fields.
+BasicRule wl:0 "mz:$BODY_VAR:_password";
+
+# CheckMK's session cookies are heavily percent-encoded, tripping the
+# "double encoding" rule (1315) in the Cookie header on nearly every
+# request after login (2FA page, main dashboard...). Same false
+# positive already fixed for Nextcloud - reuse the same cookie-header
+# whitelist rule ID list wordpress.rules uses for its own cookies.
+BasicRule wl:1000,1001,1005,1007,1010,1011,1013,1100,1101,1200,1308,1309,1310,1311,1315 "mz:$HEADERS_VAR:cookie";

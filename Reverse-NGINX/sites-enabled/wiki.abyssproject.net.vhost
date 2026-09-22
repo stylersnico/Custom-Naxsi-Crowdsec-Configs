@@ -1,0 +1,68 @@
+server {
+        listen 443 ssl;
+        http2 on;
+        ssl_certificate /etc/letsencrypt/live/abyssproject.net/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/abyssproject.net/privkey.pem;
+
+        server_name wiki.abyssproject.net;
+
+        error_log /var/log/nginx/wiki.abyssproject.net/error.log;
+        NaxsiLogFile /var/log/nginx/wiki.abyssproject.net/naxsi_error.log;
+        access_log /var/log/nginx/wiki.abyssproject.net/access.log combined;
+        limit_conn conn_wiki 500;
+
+        #Common headers for security
+        more_set_headers "Content-Security-Policy : default-src https: data: 'unsafe-inline' 'unsafe-eval' always";
+        more_set_headers "Permissions-Policy: geolocation=();midi=();notifications=();push=();sync-xhr=();microphone=();camera=();magnetometer=();gyroscope=();speaker self;vibrate=();fullscreen self;payment=();;"
+        more_set_headers "Strict-Transport-Security : max-age=15552000; includeSubDomains; preload";
+        more_set_headers "X-Frame-Options : SAMEORIGIN";
+        more_set_headers "X-Xss-Protection : 1; mode=block";
+        more_set_headers "X-Content-Type-Options : nosniff";
+        more_set_headers "Referrer-Policy : strict-origin-when-cross-origin";
+        more_set_headers "Server : Follow the white rabbit.";
+        more_set_headers "Cross-Origin-Opener-Policy : same-origin"
+        more_set_headers "Cross-Origin-Embedder-Policy : unsafe-none"
+        more_set_headers "Origin-Agent-Cluster : ?1"
+        more_set_headers "Permissions-Policy : accelerometer=(), ambient-light-sensor=(), autoplay=(), battery=(), camera=(), clipboard-read=(), clipboard-write=(), display-capture=(), document-domain=(), encrypted-media=(), fullscreen=(), gamepad=(), geolocation=(), gyroscope=(), hid=(), idle-detection=(),  magnetometer=(), microphone=(), midi=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), serial=(), speaker-selection=(), sync-xhr=(), usb=(), xr-spatial-tracking=()";
+
+
+    include /usr/local/etc/nginx/naxsi/naxsi_denied.conf;
+
+    # /graphql is Wiki.js's whole app API (query/content/title/... every
+    # field is free-form JSON, three fields already had to be whitelisted
+    # entirely). Mutations require auth, so bypass naxsi here entirely
+    # instead of continuing to whitelist field-by-field.
+    location = /graphql {
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_pass http://192.168.1.10:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_next_upstream error timeout http_502 http_503 http_504;
+    }
+
+    location / {
+        # Naxsi WAF - core rules, standard thresholds. No community
+        # whitelist exists for Wiki.js. Risk area: the page editor
+        # (Markdown with code blocks/backticks/quotes). /graphql is
+        # handled separately above (naxsi bypassed there entirely).
+        SecRulesEnabled;
+        CheckRule "$SQL >= 8" BLOCK;
+        CheckRule "$RFI >= 8" BLOCK;
+        CheckRule "$TRAVERSAL >= 4" BLOCK;
+        CheckRule "$EVADE >= 4" BLOCK;
+        CheckRule "$UPLOAD >= 8" BLOCK;
+        CheckRule "$XSS >= 8" BLOCK;
+        include /usr/local/etc/nginx/naxsi/wikijs_whitelist.rules;
+
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_pass http://192.168.1.10:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_next_upstream error timeout http_502 http_503 http_504;
+    }
+
+}

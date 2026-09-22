@@ -1,0 +1,77 @@
+map $http_user_agent $block_bot {
+    default 0;
+    ~*(bot|crawler|spider|scrapy|curl|wget|python|httpclient) 1;
+}
+
+# Raised from 5r/s: a single page load fans out into dozens of
+# concurrent JS chunk requests over HTTP/2, which was tripping this on
+# plain browsing (error_log: "limiting requests... by zone \"gitea\"").
+limit_req_zone $binary_remote_addr zone=gitea:10m rate=50r/s;
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name gitea.nicolas-simond.ch;
+
+    # SSL configuration...
+        ssl_certificate /etc/letsencrypt/live/nicolas-simond.ch/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/nicolas-simond.ch/privkey.pem;
+
+    error_log /var/log/nginx/gitea.nicolas-simond.ch/error.log;
+    NaxsiLogFile /var/log/nginx/gitea.nicolas-simond.ch/naxsi_error.log;
+    access_log /var/log/nginx/gitea.nicolas-simond.ch/access.log combined;
+    limit_conn conn_gitea 500;
+
+    if ($block_bot) {
+        return 403;
+    }
+
+    include /usr/local/etc/nginx/naxsi/naxsi_denied.conf;
+
+# Git smart-HTTP (clone/push) is raw pack-protocol binary data, not
+# naxsi-compatible - already LAN-restricted, no WAF needed/possible here.
+location ~ ^/.*/(info/refs|git-upload-pack|git-receive-pack)$ {
+    allow 192.168.1.0/24;
+    deny all;
+}
+
+# REST/LFS API: no community-validated naxsi ruleset exists for Gitea,
+# and API payloads (diffs, code, LFS pointers) are prone to false
+# positives against generic core rules - left unscanned for now.
+location ~ ^/api/ {
+        limit_req zone=gitea burst=150 nodelay;
+        client_max_body_size 512M;
+        proxy_pass http://192.168.1.10:3333;
+        proxy_set_header Connection $http_connection;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+        location / {
+        limit_req zone=gitea burst=150 nodelay;
+        client_max_body_size 512M;
+
+        # Naxsi WAF - core rules, standard thresholds. No community
+        # whitelist available for Gitea; watch for false positives on
+        # issue/PR bodies with heavy markdown/code content.
+        SecRulesEnabled;
+        CheckRule "$SQL >= 8" BLOCK;
+        CheckRule "$RFI >= 8" BLOCK;
+        CheckRule "$TRAVERSAL >= 4" BLOCK;
+        CheckRule "$EVADE >= 4" BLOCK;
+        CheckRule "$UPLOAD >= 8" BLOCK;
+        CheckRule "$XSS >= 8" BLOCK;
+        include /usr/local/etc/nginx/naxsi/gitea_whitelist.rules;
+
+        proxy_pass http://192.168.1.10:3333;
+        proxy_set_header Connection $http_connection;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

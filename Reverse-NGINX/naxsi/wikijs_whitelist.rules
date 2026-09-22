@@ -1,0 +1,11 @@
+# Wiki.js naxsi whitelist - hand-written, NOT a community-maintained
+# ruleset (none exists for Wiki.js). /graphql (the app's whole API,
+# including login/page edits) bypasses naxsi entirely - see the
+# dedicated "location = /graphql" block in wiki.abyssproject.net.vhost.
+# This file only covers what's left: location / (static assets, any
+# non-GraphQL routes).
+
+# Preventive: session cookies with heavily percent-encoded tokens trip
+# the "double encoding" rule (1315) in the Cookie header - confirmed
+# happening on Nextcloud and CheckMK.
+BasicRule wl:1000,1001,1005,1007,1010,1011,1013,1100,1101,1200,1308,1309,1310,1311,1315 "mz:$HEADERS_VAR:cookie";

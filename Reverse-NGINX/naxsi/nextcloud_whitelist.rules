@@ -1,0 +1,30 @@
+# Nextcloud naxsi whitelist - hand-written, NOT a community-maintained
+# ruleset (none exists for Nextcloud, unlike wordpress_whitelist.rules).
+# Scoped narrowly to fix confirmed false positives from real traffic in
+# naxsi_error.log; only extend when a new false positive is confirmed
+# there, not speculatively.
+
+# Nextcloud's session/CSRF cookies are heavily percent-encoded
+# (base64url-ish tokens), tripping the "double encoding" rule (1315)
+# in the Cookie header on nearly every request - it was blocking /login,
+# /apps/files/, even /favicon.ico. Cookie content here is server-set,
+# trusted session data, not user-controlled attacker input, so this is
+# the exact same class of false positive the official wordpress.rules
+# whitelist already accepts for its own cookies - reuse that same rule
+# ID list for the Cookie header.
+BasicRule wl:1000,1001,1005,1007,1010,1011,1013,1100,1101,1200,1308,1309,1310,1311,1315 "mz:$HEADERS_VAR:cookie";
+
+# The OCS API (/ocs/v2.php/...) spans dozens of endpoints (calendar,
+# contacts, sharing, notifications...) with varying body content-types
+# that naxsi doesn't always recognize, triggering its internal
+# "unknown content-type" status (id 11) and blocking unconditionally -
+# not a scored attack pattern. Same class of fix as WordPress's
+# wp-cron.php / xmlrpc.php content-type whitelist. Applied broadly for
+# BODY rather than route-by-route, since OCS has too many endpoints to
+# enumerate individually.
+BasicRule wl:11 "mz:BODY";
+
+# Preventive (not log-confirmed): a WAF should never content-scan a
+# password field - Nextcloud's login form field is "password". Same
+# reasoning as the CheckMK/WordPress password-field fixes.
+BasicRule wl:0 "mz:$BODY_VAR:password";

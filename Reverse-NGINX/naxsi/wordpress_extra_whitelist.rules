@@ -1,0 +1,48 @@
+# Local additions on top of the upstream wordpress_whitelist.rules
+# (kept unmodified for easy re-sync). Scoped narrowly to fix confirmed
+# false positives from real traffic in naxsi_error.log; only extend
+# when a new false positive is confirmed there, not speculatively.
+
+# "select2" (a common JS UI library) contains the SQL keyword "select",
+# tripping the core SQL-keywords rule (id 1000) on its own asset URL.
+# Upstream wordpress.rules already whitelists this for WooCommerce,
+# Yoast SEO and WPML's bundled select2 assets - add the same fix for
+# the wp-user-avatar plugin.
+BasicRule wl:1000 "mz:$URL:/wp-content/plugins/wp-user-avatar/assets/select2/select2.min.js|URL";
+BasicRule wl:1000 "mz:$URL:/wp-content/plugins/wp-user-avatar/assets/select2/select2.min.css|URL";
+
+# Third-party plugin meta boxes on /wp-admin/post.php (Gutenberg/classic
+# editor "Save"/"Publish") submit their own custom fields using bracket
+# notation (e.g. typology[display_settings]), just like WordPress core
+# fields such as post_category[]/tax_input[post_tag] that upstream
+# already whitelists by exact name. Plugin field names can't be
+# enumerated in advance, so whitelist brackets in BODY param names
+# generically - same "mz:BODY|NAME" pattern confirmed reliable on
+# Passbolt (unlike the $BODY_VAR_X regex-prefix variant, which wasn't).
+BasicRule wl:1310,1311 "mz:BODY|NAME";
+
+# Same bracket notation also shows up in ARGS (query string) param
+# names, e.g. load[chunk_0] below - generalize the fix to ARGS too.
+BasicRule wl:1310,1311 "mz:ARGS|NAME";
+
+# /wp-admin/load-styles.php and /wp-admin/load-scripts.php: see the
+# dedicated "location =" blocks in abyssproject.net.vhost instead -
+# naxsi is bypassed entirely there rather than whitelisted, since
+# their load[chunk_N] value is a WP-generated list of every installed
+# plugin's script/style handles (unenumerable, changes as plugins are
+# added/removed) and these are authenticated wp-admin-only endpoints,
+# not attacker-reachable content worth scanning.
+
+# imgareaselect (a jQuery plugin bundled with WP core) contains "select"
+# in its own filename, tripping the SQL-keywords rule (id 1000) in the
+# URL zone. Upstream wordpress.rules already whitelists this plugin's
+# .css asset but not its .js one - close that gap.
+BasicRule wl:1000 "mz:$URL:/wp-includes/js/imgareaselect/jquery.imgareaselect.min.js|URL";
+
+# Preventive (not log-confirmed): a WAF should never content-scan a
+# password field - the backend handles arbitrary characters safely via
+# hashing regardless, and scanning only risks locking out users whose
+# password contains a quote/special character (confirmed happening on
+# CheckMK's login with the same rule class). Upstream wordpress.rules
+# only whitelists rule 1011 (close-paren) for "pwd" - widen to wl:0.
+BasicRule wl:0 "mz:$BODY_VAR:pwd";

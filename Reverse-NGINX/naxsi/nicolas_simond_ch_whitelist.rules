@@ -1,0 +1,11 @@
+# nicolas-simond.ch (static site) naxsi whitelist - hand-written.
+# Scoped narrowly to fix confirmed false positives from real traffic
+# in naxsi_error.log; only extend when a new false positive is
+# confirmed there, not speculatively (except the cookie fix below,
+# applied preventively per explicit request after it hit two other
+# apps - see git history / naxsi/checkmk_whitelist.rules).
+
+# Preventive: session/analytics cookies with heavily percent-encoded
+# tokens trip the "double encoding" rule (1315) in the Cookie header -
+# confirmed happening on Nextcloud and CheckMK.
+BasicRule wl:1000,1001,1005,1007,1010,1011,1013,1100,1101,1200,1308,1309,1310,1311,1315 "mz:$HEADERS_VAR:cookie";
