@@ -46,3 +46,8 @@ BasicRule wl:1000 "mz:$URL:/wp-includes/js/imgareaselect/jquery.imgareaselect.mi
 # CheckMK's login with the same rule class). Upstream wordpress.rules
 # only whitelists rule 1011 (close-paren) for "pwd" - widen to wl:0.
 BasicRule wl:0 "mz:$BODY_VAR:pwd";
+
+# Yoast SEO's meta description field on /wp-admin/post.php
+BasicRule wl:0 "mz:$BODY_VAR:excerpt";
+BasicRule wl:0 "mz:$BODY_VAR:yoast_wpseo_metadesc";
+
