@@ -51,3 +51,13 @@ BasicRule wl:0 "mz:$BODY_VAR:pwd";
 BasicRule wl:0 "mz:$BODY_VAR:excerpt";
 BasicRule wl:0 "mz:$BODY_VAR:yoast_wpseo_metadesc";
 
+# wpDiscuz comment body (wc_comment) via admin-ajax.php: ordinary punctuation
+# (commas 1015, parens 1010/1011, apostrophes 1013) reaches $SQL >= 8.
+# Scoped to admin-ajax.php: wc_comment POSTed to article URLs is spam-bot traffic.
+BasicRule wl:1000,1001,1005,1007,1008,1009,1010,1011,1013,1015,1016,1100,1101,1200,1302,1303,1310,1311,1315,1400 "mz:$URL:/wp-admin/admin-ajax.php|$BODY_VAR:wc_comment";
+
+# oEmbed: the "url" GET parameter is always a full URL (1100/1101).
+BasicRule wl:1100,1101 "mz:$URL:/wp-json/oembed/1.0/embed|$ARGS_VAR:url";
+
+# RSS feed: feed reader cookie with "0x" (1002) and commas (1015), $SQL:22.
+BasicRule wl:1002,1015 "mz:$URL:/feed/|$HEADERS_VAR:cookie";
