@@ -9,3 +9,10 @@
 # the "double encoding" rule (1315) in the Cookie header - confirmed
 # happening on Nextcloud and CheckMK.
 BasicRule wl:1000,1001,1005,1007,1010,1011,1013,1100,1101,1200,1308,1309,1310,1311,1315 "mz:$HEADERS_VAR:cookie";
+
+# 06.10.2026 - envoi de médias (POST /u) : le formulaire multipart contient
+# un champ "mediaUpload" en JSON ({"folderId":…}), dont les guillemets
+# déclenchent la règle 1001 (" -> $SQL 8 + $XSS 8 par guillemet). Bloquait
+# tous les envois d'images/fichiers. Seule la règle 1001, seulement ce
+# champ de cette URL.
+BasicRule wl:1001 "mz:$URL:/u|$BODY_VAR:mediaupload";
